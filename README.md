@@ -300,36 +300,6 @@ distributed:
   backend: "nccl"
 ```
 
-## Output Structure
-
-After training, the output directory contains:
-
-```
-results/experiment_name/
-├── checkpoints/
-│   ├── best_model.pth
-│   ├── epoch_010.pth
-│   └── final_model.pth
-├── figures/
-│   ├── training_curves.png
-│   ├── confusion_matrix.png
-│   ├── confusion_matrix_normalized.png
-│   ├── roc_curves.png
-│   ├── per_class_accuracy.png
-│   ├── metrics_summary.png
-│   └── network/
-│       ├── conv_filter_weights.png
-│       ├── weight_distributions.png
-│       ├── layer_statistics.png
-│       └── network_architecture.png
-├── model.onnx
-├── metrics.json
-├── confusion_matrix.json
-├── classification_report.json
-├── config.yaml
-└── train.log
-```
-
 ## Metrics
 
 The framework computes and logs:

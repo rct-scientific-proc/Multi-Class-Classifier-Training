@@ -159,8 +159,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Install final dependencies
-echo "[INFO] Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn..."
-"$VENV_PYTHON" -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn
+echo "[INFO] Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn, pyyaml..."
+"$VENV_PYTHON" -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn pyyaml
 if [ $? -ne 0 ]; then
     echo "[ERROR] Failed to install additional dependencies."
     exit 1

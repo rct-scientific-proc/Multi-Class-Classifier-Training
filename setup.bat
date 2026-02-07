@@ -174,8 +174,8 @@ if errorlevel 1 (
 )
 
 REM Install final dependencies
-echo [INFO] Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn...
-"%VENV_PYTHON%" -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn
+echo [INFO] Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn, pyyaml...
+"%VENV_PYTHON%" -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn pyyaml
 if errorlevel 1 (
     echo [ERROR] Failed to install additional dependencies.
     exit /b 1

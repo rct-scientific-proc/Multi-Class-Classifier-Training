@@ -150,8 +150,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Install final dependencies, onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn
-Write-Host "Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn..." -ForegroundColor Green
-& $venvPython -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyyaml seaborn
+Write-Host "Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn, pyyaml..." -ForegroundColor Green
+& $venvPython -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyyaml seaborn pyyaml
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to install additional dependencies." -ForegroundColor Red
     exit 1

@@ -1,11 +1,22 @@
 #!/bin/bash
 # Python virtual environment setup script (Bash version)
+#
+# Usage:
+#   ./setup.sh                                    # Interactive mode
+#   ./setup.sh /usr/bin/python3                   # Specify Python path
+#   ./setup.sh /usr/bin/python3 cu126             # Specify Python path and CUDA version
+#   ./setup.sh "" cu126                           # Use default Python, specify CUDA
+#
+# CudaVersion options: cpu, cu118, cu126, cu130
 
 # Python base path - modify this or pass as argument
 PYTHON_BASE_PATH="${1:-/usr/bin}"
 
+# CUDA version from command line (optional)
+CUDA_ARG="${2:-}"
+
 # Python executable path
-PYTHON_EXE="$PYTHON_BASE_PATH/python3"
+PYTHON_EXE="$PYTHON_BASE_PATH/python"
 
 # Check if Python executable exists
 if [ ! -f "$PYTHON_EXE" ]; then
@@ -69,45 +80,75 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Ask user for CUDA version or CPU only
-echo ""
-echo "Select CUDA version for PyTorch installation:"
-echo "[0] cpu"
-echo "[1] cu126"
-echo "[2] cu118"
-echo "[3] cu130"
-echo ""
-read -p "Enter the number corresponding to your choice (default 0 for cpu): " SELECTION
+# Check if CUDA version was provided via command line
+if [ -n "$CUDA_ARG" ]; then
+    # Validate provided CUDA version
+    case "$CUDA_ARG" in
+        cpu)
+            CHOSEN_CUDA="cpu"
+            TORCH_INDEX="https://download.pytorch.org/whl/cpu"
+            echo "[INFO] Using CUDA version from argument: cpu"
+            ;;
+        cu128)
+            CHOSEN_CUDA="cu128"
+            TORCH_INDEX="https://download.pytorch.org/whl/cu128"
+            echo "[INFO] Using CUDA version from argument: cu128"
+            ;;
+        cu126)
+            CHOSEN_CUDA="cu126"
+            TORCH_INDEX="https://download.pytorch.org/whl/cu126"
+            echo "[INFO] Using CUDA version from argument: cu126"
+            ;;
+        cu130)
+            CHOSEN_CUDA="cu130"
+            TORCH_INDEX="https://download.pytorch.org/whl/cu130"
+            echo "[INFO] Using CUDA version from argument: cu130"
+            ;;
+        *)
+            echo "[ERROR] Invalid CUDA version: $CUDA_ARG. Valid options: cpu, cu118, cu126, cu130"
+            exit 1
+            ;;
+    esac
+else
+    # Ask user for CUDA version or CPU only
+    echo ""
+    echo "Select CUDA version for PyTorch installation:"
+    echo "[0] cpu"
+    echo "[1] cu126"
+    echo "[2] cu128"
+    echo "[3] cu130"
+    echo ""
+    read -p "Enter the number corresponding to your choice (default 0 for cpu): " SELECTION
 
-# Default to cpu if empty
-SELECTION="${SELECTION:-0}"
+    # Default to cpu if empty
+    SELECTION="${SELECTION:-0}"
 
-# Set the chosen CUDA version
-case "$SELECTION" in
-    0)
-        CHOSEN_CUDA="cpu"
-        TORCH_INDEX="https://download.pytorch.org/whl/cpu"
-        ;;
-    1)
-        CHOSEN_CUDA="cu126"
-        TORCH_INDEX="https://download.pytorch.org/whl/cu126"
-        ;;
-    2)
-        CHOSEN_CUDA="cu118"
-        TORCH_INDEX="https://download.pytorch.org/whl/cu118"
-        ;;
-    3)
-        CHOSEN_CUDA="cu130"
-        TORCH_INDEX="https://download.pytorch.org/whl/cu130"
-        ;;
-    *)
-        echo "[WARN] Invalid selection. Defaulting to 'cpu'."
-        CHOSEN_CUDA="cpu"
-        TORCH_INDEX="https://download.pytorch.org/whl/cpu"
-        ;;
-esac
-
-echo "[INFO] You selected: $CHOSEN_CUDA"
+    # Set the chosen CUDA version
+    case "$SELECTION" in
+        0)
+            CHOSEN_CUDA="cpu"
+            TORCH_INDEX="https://download.pytorch.org/whl/cpu"
+            ;;
+        1)
+            CHOSEN_CUDA="cu126"
+            TORCH_INDEX="https://download.pytorch.org/whl/cu126"
+            ;;
+        2)
+            CHOSEN_CUDA="cu128"
+            TORCH_INDEX="https://download.pytorch.org/whl/cu128"
+            ;;
+        3)
+            CHOSEN_CUDA="cu130"
+            TORCH_INDEX="https://download.pytorch.org/whl/cu130"
+            ;;
+        *)
+            echo "[WARN] Invalid selection. Defaulting to 'cpu'."
+            CHOSEN_CUDA="cpu"
+            TORCH_INDEX="https://download.pytorch.org/whl/cpu"
+            ;;
+    esac
+    echo "[INFO] You selected: $CHOSEN_CUDA"
+fi
 
 # Install torch and torchvision based on chosen CUDA version
 echo "[INFO] Installing torch and torchvision for $CHOSEN_CUDA..."
@@ -118,8 +159,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Install final dependencies
-echo "[INFO] Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, pyzmq..."
-"$VENV_PYTHON" -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyzmq
+echo "[INFO] Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn..."
+"$VENV_PYTHON" -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn
 if [ $? -ne 0 ]; then
     echo "[ERROR] Failed to install additional dependencies."
     exit 1

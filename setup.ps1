@@ -1,9 +1,24 @@
 # Python virtual environment setup script
+#
+# Usage:
+#   .\setup.ps1                                    # Interactive mode
+#   .\setup.ps1 -PythonPath "C:\Python311"         # Specify Python path
+#   .\setup.ps1 -CudaVersion cu126                 # Specify CUDA version
+#   .\setup.ps1 -PythonPath "C:\Python311" -CudaVersion cu126
+#
+# CudaVersion options: cpu, cu126, cu128, cu130
 
-# Python base path parameter
 param (
-    [string]$PythonBasePath = "C:\Users\ryant\SDK\Python3.14"
+    [string]$PythonPath = "",
+    [string]$CudaVersion = ""
 )
+
+# Default Python base path if not specified
+if ([string]::IsNullOrWhiteSpace($PythonPath)) {
+    $PythonBasePath = Join-Path $ENV:USERPROFILE "AppData\Local\Programs\Python\Python313"
+} else {
+    $PythonBasePath = $PythonPath
+}
 
 # Python executable path
 $pythonExe = Join-Path $PythonBasePath "\python.exe"
@@ -75,24 +90,37 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Install torch and torchvision, allowed cpu, cu126, cu118, cu130
-# Ask user for CUDA version or CPU only
-$cudaOptions = @("cpu", "cu126", "cu118", "cu130")
-Write-Host "Select CUDA version for PyTorch installation:" -ForegroundColor Cyan
-for ($i = 0; $i -lt $cudaOptions.Count; $i++) {
-    Write-Host "[$i] $($cudaOptions[$i])"
-}
-$selection = Read-Host "Enter the number corresponding to your choice (default 0 for cpu)"
-if ([string]::IsNullOrWhiteSpace($selection)) {
-    $selection = 0
-}
+# Install torch and torchvision, allowed cpu, cu126, cu128, cu130
+$cudaOptions = @("cpu", "cu126", "cu128", "cu130")
 
-if ($selection -ge 0 -and $selection -lt $cudaOptions.Count) {
-    $chosenCuda = $cudaOptions[$selection]
-    Write-Host "You selected: $chosenCuda" -ForegroundColor Green
+# Check if CUDA version was provided via command line
+if ([string]::IsNullOrWhiteSpace($CudaVersion)) {
+    # Ask user for CUDA version or CPU only
+    Write-Host "Select CUDA version for PyTorch installation:" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $cudaOptions.Count; $i++) {
+        Write-Host "[$i] $($cudaOptions[$i])"
+    }
+    $selection = Read-Host "Enter the number corresponding to your choice (default 0 for cpu)"
+    if ([string]::IsNullOrWhiteSpace($selection)) {
+        $selection = 0
+    }
+
+    if ($selection -ge 0 -and $selection -lt $cudaOptions.Count) {
+        $chosenCuda = $cudaOptions[$selection]
+        Write-Host "You selected: $chosenCuda" -ForegroundColor Green
+    } else {
+        Write-Host "Invalid selection. Defaulting to 'cpu'." -ForegroundColor Yellow
+        $chosenCuda = "cpu"
+    }
 } else {
-    Write-Host "Invalid selection. Defaulting to 'cpu'." -ForegroundColor Yellow
-    $chosenCuda = "cpu"
+    # Validate provided CUDA version
+    if ($cudaOptions -contains $CudaVersion) {
+        $chosenCuda = $CudaVersion
+        Write-Host "Using CUDA version from argument: $chosenCuda" -ForegroundColor Green
+    } else {
+        Write-Host "Invalid CUDA version: $CudaVersion. Valid options: $($cudaOptions -join ', ')" -ForegroundColor Red
+        exit 1
+    }
 }
 
 # Install torch and torchvision based on chosen CUDA version
@@ -104,8 +132,8 @@ switch ($chosenCuda) {
     "cu126" {
         & $venvPython -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
     }
-    "cu118" {
-        & $venvPython -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+    "cu128" {
+        & $venvPython -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
     }
     "cu130" {
         & $venvPython -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
@@ -121,8 +149,8 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Install final dependencies, onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyzmq
-Write-Host "Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, pyzmq..." -ForegroundColor Green
+# Install final dependencies, onnx onnxscript onnxruntime tqdm scikit-learn matplotlib seaborn
+Write-Host "Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, seaborn..." -ForegroundColor Green
 & $venvPython -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyyaml seaborn
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to install additional dependencies." -ForegroundColor Red

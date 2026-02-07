@@ -30,6 +30,7 @@ from utils.config import Config, load_config, save_config
 from utils.data import create_data_loaders, compute_class_weights
 from utils.metrics import MetricsTracker, save_metrics, save_confusion_matrix, save_classification_report
 from utils.models import create_model, export_to_onnx, export_to_torchscript
+from utils.network_viz import generate_all_network_figures
 from utils.plotting import generate_all_figures
 from utils.training import (
     create_loss_function,
@@ -482,6 +483,15 @@ def train(config: Config, logger: logging.Logger) -> None:
     )
     
     logger.info(f"Figures saved to: {output_dir / 'figures'}")
+    
+    # Generate network visualizations
+    logger.info("Generating network weight visualizations...")
+    input_shape = (1, config.num_channels, config.image_size[0], config.image_size[1])
+    generate_all_network_figures(
+        model=model,
+        save_dir=output_dir / "figures" / "network",
+        input_shape=input_shape
+    )
     
     # Log final results
     logger.info("=" * 60)

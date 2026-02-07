@@ -208,7 +208,11 @@ def plot_per_class_accuracy(
     # Color bars based on accuracy
     colors = plt.cm.RdYlGn(np.array(accuracies))
     
-    bars = ax.bar(classes, accuracies, color=colors, edgecolor='black', linewidth=0.5)
+    # Use numeric x positions to avoid matplotlib treating string labels as numbers
+    x_positions = np.arange(len(classes))
+    bars = ax.bar(x_positions, accuracies, color=colors, edgecolor='black', linewidth=0.5)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels([str(c) for c in classes])
     
     ax.set_xlabel('Class')
     ax.set_ylabel('Accuracy')

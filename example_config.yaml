@@ -1,0 +1,338 @@
+# Example configuration file for using the MultiClassifierTrainer with the MNIST dataset and ResNet18 model.
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+# Allowed models: torchvision models like "resnet18", "resnet34", "resnet50", "resnet101",
+# "vgg16", "vgg19", "densenet121", "densenet169", "efficientnet_b0", "efficientnet_b1",
+# "mobilenet_v2", "mobilenet_v3_small", "mobilenet_v3_large", "shufflenet_v2_x1_0",
+# "squeezenet1_0", "inception_v3", "googlenet", "alexnet"
+model: "resnet18"
+
+# Use pretrained weights from ImageNet
+pretrained: true
+
+# Freeze backbone layers (only train classifier head)
+freeze_backbone: false
+
+# Number of layers to freeze from the beginning (if freeze_backbone is false)
+freeze_layers: 0
+
+# Dropout rate for classifier head
+dropout_rate: 0.5
+
+# ==============================================================================
+# Data Paths
+# ==============================================================================
+
+# Path to training data
+train_directory: "data/mnist/train"
+
+# Path to validation data
+val_directory: "data/mnist/validate"
+
+# Path to test data
+test_directory: "data/mnist/test"
+
+# Path to save all results of training and model checkpoints
+output_directory: "results/mnist_resnet18"
+
+# ==============================================================================
+# Data Loading & Augmentation
+# ==============================================================================
+
+# Number of worker processes for data loading
+num_workers: 1
+
+# Pin memory for faster GPU transfer
+pin_memory: true
+
+# Image size (height, width) - images will be resized to this
+image_size: [20, 20]
+
+# Number of channels in input images (1 for grayscale, 3 for RGB)
+num_channels: 1
+
+# Normalization mean (per channel) - use ImageNet stats for pretrained models
+normalize_mean: [0.485, 0.456, 0.406]
+
+# Normalization std (per channel)
+normalize_std: [0.229, 0.224, 0.225]
+
+# Data augmentation for training
+augmentation:
+  # Random horizontal flip probability
+  horizontal_flip: 0.0
+  
+  # Random vertical flip probability
+  vertical_flip: 0.0
+  
+  # Random rotation range in degrees
+  rotation: 15
+  
+  # Random affine transformations
+  affine:
+    enabled: true
+    translate: [0.1, 0.1]
+    scale: [0.9, 1.1]
+    shear: 10
+  
+  # Color jitter augmentation
+  color_jitter:
+    enabled: true
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.2
+    hue: 0.1
+  
+  # Random erasing (cutout)
+  random_erasing:
+    enabled: false
+    probability: 0.5
+    scale: [0.02, 0.33]
+    ratio: [0.3, 3.3]
+  
+  # Mixup augmentation
+  mixup:
+    enabled: false
+    alpha: 0.2
+  
+  # CutMix augmentation
+  cutmix:
+    enabled: false
+    alpha: 1.0
+
+# ==============================================================================
+# Training Parameters
+# ==============================================================================
+
+# Batch size for training
+batch_size: 64
+
+# Batch size for validation/test (can be larger since no gradients)
+eval_batch_size: 128
+
+# Number of training epochs
+num_epochs: 2
+
+# Gradient accumulation steps (effective batch = batch_size * accumulation_steps)
+gradient_accumulation_steps: 1
+
+# Maximum gradient norm for clipping (0 to disable)
+max_grad_norm: 1.0
+
+# Mixed precision training (fp16)
+mixed_precision: true
+
+# Seed for reproducibility
+seed: 42
+
+# ==============================================================================
+# Optimizer Configuration
+# ==============================================================================
+
+# Optimizer: "Adam", "AdamW", "SGD", "RMSprop", "Adagrad"
+optimizer: "AdamW"
+
+# Learning rate
+learning_rate: 0.001
+
+# Weight decay (L2 regularization)
+weight_decay: 0.0001
+
+# SGD-specific parameters
+sgd:
+  momentum: 0.9
+  nesterov: true
+
+# Adam/AdamW-specific parameters
+adam:
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+  amsgrad: false
+
+# ==============================================================================
+# Learning Rate Scheduler
+# ==============================================================================
+
+# Scheduler: "StepLR", "MultiStepLR", "ExponentialLR", "CosineAnnealingLR",
+# "CosineAnnealingWarmRestarts", "ReduceLROnPlateau", "OneCycleLR", "LinearWarmup"
+learning_rate_scheduler: "CosineAnnealingLR"
+
+# Warmup epochs (linear warmup before main scheduler)
+warmup_epochs: 0
+
+# Warmup start learning rate factor
+warmup_start_factor: 0.1
+
+# StepLR parameters
+step_lr:
+  step_size: 5
+  gamma: 0.1
+
+# MultiStepLR parameters
+multi_step_lr:
+  milestones: [30, 60, 90]
+  gamma: 0.1
+
+# ExponentialLR parameters
+exponential_lr:
+  gamma: 0.95
+
+# CosineAnnealingLR parameters
+cosine_annealing_lr:
+  T_max: 10
+  eta_min: 1.0e-6
+
+# CosineAnnealingWarmRestarts parameters
+cosine_annealing_warm_restarts:
+  T_0: 10
+  T_mult: 2
+  eta_min: 1.0e-6
+
+# ReduceLROnPlateau parameters
+reduce_lr_on_plateau:
+  mode: "max"
+  factor: 0.1
+  patience: 5
+  threshold: 0.0001
+  min_lr: 1.0e-7
+
+# OneCycleLR parameters
+one_cycle_lr:
+  max_lr: 0.01
+  pct_start: 0.3
+  anneal_strategy: "cos"
+  div_factor: 25.0
+  final_div_factor: 10000.0
+
+# ==============================================================================
+# Loss Function
+# ==============================================================================
+
+# Loss function: "CrossEntropyLoss", "LabelSmoothingCrossEntropy", "FocalLoss",
+# "WeightedCrossEntropyLoss"
+loss_function: "FocalLoss"
+
+# Label smoothing factor (for LabelSmoothingCrossEntropy)
+label_smoothing: 0.1
+
+# Focal loss parameters
+focal_loss:
+  alpha: 1.0
+  gamma: 2.0
+
+# Class weights for imbalanced datasets (auto, balanced, or list of weights)
+class_weights: "auto"
+
+# ==============================================================================
+# Evaluation & Metrics
+# ==============================================================================
+
+# Primary score metric for model selection and early stopping
+# Options: "accuracy", "f1_score", "f1_macro", "f1_weighted", "precision", "recall",
+# "mcc" (Matthews Correlation Coefficient), "auc_roc", "balanced_accuracy"
+score_metric: "mcc"
+
+# Additional metrics to track
+additional_metrics:
+  - "accuracy"
+  - "f1_macro"
+  - "precision"
+  - "recall"
+  - "confusion_matrix"
+  - "per_class_accuracy"
+
+# Compute and save ROC curves
+compute_roc_curves: true
+
+# ==============================================================================
+# Checkpointing & Early Stopping
+# ==============================================================================
+
+# Save checkpoint every N epochs
+save_every_n_epochs: 1
+
+# Keep only top K best checkpoints
+keep_top_k_checkpoints: 3
+
+# Save final model regardless of performance
+save_final_model: true
+
+# Resume training from checkpoint
+resume_from_checkpoint: null
+
+# Early stopping
+early_stopping:
+  enabled: true
+  patience: 10
+  min_delta: 0.001
+  mode: "max"
+
+# ==============================================================================
+# Logging & Visualization
+# ==============================================================================
+
+# Logging level: "DEBUG", "INFO", "WARNING", "ERROR"
+log_level: "INFO"
+
+# Log training metrics every N steps
+log_every_n_steps: 10
+
+# TensorBoard logging
+tensorboard:
+  enabled: true
+  log_dir: "runs"
+
+# Weights & Biases logging
+wandb:
+  enabled: false
+  project: "multiclass-classifier"
+  entity: null
+  run_name: null
+  tags: []
+
+# Save sample predictions during validation
+save_predictions:
+  enabled: true
+  num_samples: 16
+  save_every_n_epochs: 5
+
+# ==============================================================================
+# Model Export
+# ==============================================================================
+
+# Export trained model to ONNX format
+export_onnx: true
+
+# ONNX opset version (minimum 18 recommended for modern PyTorch)
+onnx_opset_version: 18
+
+# Export to TorchScript
+export_torchscript: false
+
+# Quantization (post-training)
+quantization:
+  enabled: false
+  backend: "fbgemm"  # "fbgemm" for x86, "qnnpack" for ARM
+
+# ==============================================================================
+# Hardware & Distributed Training
+# ==============================================================================
+
+# Device: "cuda", "cpu", "mps" (Apple Silicon), or specific device like "cuda:0"
+device: "cuda"
+
+# Use all available GPUs with DataParallel
+data_parallel: false
+
+# Distributed training with DistributedDataParallel
+distributed:
+  enabled: false
+  backend: "nccl"
+  world_size: 1
+  rank: 0
+
+
+

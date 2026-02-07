@@ -139,8 +139,8 @@ def main():
     parser.add_argument(
         "--val-split",
         type=float,
-        default=0.1,
-        help="Fraction of training data to use for validation. Default: 0.1"
+        default=0.2,
+        help="Fraction of training data to use for validation. Default: 0.2"
     )
     
     parser.add_argument(

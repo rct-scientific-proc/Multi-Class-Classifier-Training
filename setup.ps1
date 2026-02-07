@@ -2,7 +2,7 @@
 
 # Python base path parameter
 param (
-    [string]$PythonBasePath = "C:\Users\ryant\SDK\Python\3.10.11"
+    [string]$PythonBasePath = "C:\Users\ryant\SDK\Python3.14"
 )
 
 # Python executable path
@@ -123,7 +123,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Install final dependencies, onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyzmq
 Write-Host "Installing additional dependencies: onnx, onnxscript, onnxruntime, tqdm, scikit-learn, matplotlib, pyzmq..." -ForegroundColor Green
-& $venvPython -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyzmq
+& $venvPython -m pip install onnx onnxscript onnxruntime tqdm scikit-learn matplotlib pyyaml seaborn
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to install additional dependencies." -ForegroundColor Red
     exit 1

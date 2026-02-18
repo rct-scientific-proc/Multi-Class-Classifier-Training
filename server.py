@@ -10,6 +10,7 @@ Usage:
 import argparse
 import json
 import logging
+import signal
 import sys
 import time
 from pathlib import Path
@@ -127,14 +128,39 @@ def run_server(args):
     class_names = load_class_names(args.class_names)
     model = load_model(config, class_names, args.checkpoint, device)
 
+    # --- Ctrl+C / signal handling -------------------------------------------
+    shutdown_requested = False
+
+    def _signal_handler(signum, frame):
+        nonlocal shutdown_requested
+        if shutdown_requested:
+            # Second Ctrl+C → force-exit immediately
+            logger.warning("Forced shutdown.")
+            sys.exit(1)
+        logger.info("Ctrl+C received – finishing current request then shutting down…")
+        shutdown_requested = True
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _signal_handler)
+
+    # --- ZMQ setup ---------------------------------------------------------
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     bind_addr = f"tcp://*:{args.port}"
     socket.bind(bind_addr)
-    logger.info("Inference server listening on %s", bind_addr)
+    logger.info("Inference server listening on %s  (Ctrl+C to stop)", bind_addr)
+
+    poller = zmq.Poller()
+    poller.register(socket, zmq.POLLIN)
+    POLL_TIMEOUT_MS = 500  # check for interrupts every 500 ms
 
     try:
-        while True:
+        while not shutdown_requested:
+            events = dict(poller.poll(POLL_TIMEOUT_MS))
+            if socket not in events:
+                continue  # timeout – loop back and re-check shutdown flag
+
             raw = socket.recv_string()
             try:
                 payload = json.loads(raw)
@@ -160,6 +186,7 @@ def run_server(args):
     except KeyboardInterrupt:
         logger.info("Interrupted – shutting down.")
     finally:
+        poller.unregister(socket)
         socket.close()
         context.term()
         logger.info("Server stopped.")

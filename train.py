@@ -31,7 +31,7 @@ from utils.data import create_data_loaders, compute_class_weights
 from utils.metrics import MetricsTracker, save_metrics, save_confusion_matrix, save_classification_report
 from utils.models import create_model, export_to_onnx, export_to_torchscript
 from utils.network_viz import generate_all_network_figures
-from utils.plotting import generate_all_figures
+from utils.plotting import generate_all_figures, plot_stratification_histograms
 from utils.training import (
     create_loss_function,
     create_optimizer,
@@ -483,6 +483,22 @@ def train(config: Config, logger: logging.Logger) -> None:
     )
     
     logger.info(f"Figures saved to: {output_dir / 'figures'}")
+    
+    # Generate stratification distribution histograms (image-bin mode only)
+    if config.image_bin_path and config.stratification_csv:
+        logger.info("Generating stratification distribution histograms...")
+        # _TransformSubset exposes .indices from the split
+        plot_stratification_histograms(
+            csv_path=config.stratification_csv,
+            image_bin_path=config.image_bin_path,
+            train_indices=train_loader.dataset.indices,
+            val_indices=val_loader.dataset.indices,
+            test_indices=test_loader.dataset.indices,
+            samples=train_loader.dataset.dataset.samples,
+            save_dir=output_dir / "figures" / "stratification_bins",
+            stratify_columns=config.stratify_columns or None,
+            stratify_bins=config.stratify_bins or None,
+        )
     
     # Generate network visualizations
     logger.info("Generating network weight visualizations...")

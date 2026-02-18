@@ -1,0 +1,163 @@
+# Configuration for testing stratified splitting with the rotated MNIST dataset.
+# Uses image_bin_path to load all images from a single directory and splits
+# them into train/val/test sets stratified by rotation angle bins.
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+model: "resnet18"
+pretrained: true
+freeze_backbone: false
+freeze_layers: 0
+dropout_rate: 0.5
+
+# ==============================================================================
+# Data Paths
+# ==============================================================================
+
+# These are ignored when image_bin_path is set, but kept for reference
+train_directory: "data/mnist/train"
+val_directory: "data/mnist/validate"
+test_directory: "data/mnist/test"
+
+output_directory: "results/mnist_rotated_flipped_stratified"
+
+# Use the rotated MNIST bin — all images in one directory tree, split automatically
+image_bin_path: "data/mnist_rotated_and_reflected"
+
+# 60% train, 20% val (implicit), 20% test
+train_val_split: 0.6
+test_split: 0.2
+
+# Stratify by rotation-angle bins so each split has a uniform angle distribution
+# The CSV has raw float angles; stratify_bins tells the loader to auto-bin them.
+stratification_csv: "local/mnist_rotated_reflected_stratification.csv"
+stratify_columns: ["angle", "flipped"]
+stratify_bins:
+  angle: 10
+  flipped: 2
+
+# ==============================================================================
+# Data Loading & Augmentation
+# ==============================================================================
+num_workers: 1
+pin_memory: true
+image_size: [20, 20]
+num_channels: 1
+normalize_mean: [0.485, 0.456, 0.406]
+normalize_std: [0.229, 0.224, 0.225]
+
+augmentation:
+  horizontal_flip: 0.0
+  vertical_flip: 0.0
+  rotation: 0        # no extra rotation — the data already has rotation
+  affine:
+    enabled: false
+  color_jitter:
+    enabled: false
+  random_erasing:
+    enabled: false
+  mixup:
+    enabled: false
+  cutmix:
+    enabled: false
+
+# ==============================================================================
+# Training Parameters
+# ==============================================================================
+batch_size: 64
+eval_batch_size: 128
+num_epochs: 2
+gradient_accumulation_steps: 1
+max_grad_norm: 1.0
+mixed_precision: true
+seed: 42
+
+# ==============================================================================
+# Optimizer Configuration
+# ==============================================================================
+optimizer: "AdamW"
+learning_rate: 0.001
+weight_decay: 0.0001
+adam:
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+  amsgrad: false
+
+# ==============================================================================
+# Learning Rate Scheduler
+# ==============================================================================
+learning_rate_scheduler: "CosineAnnealingLR"
+warmup_epochs: 0
+warmup_start_factor: 0.1
+cosine_annealing_lr:
+  T_max: 10
+  eta_min: 1.0e-6
+
+# ==============================================================================
+# Loss Function
+# ==============================================================================
+loss_function: "FocalLoss"
+label_smoothing: 0.1
+focal_loss:
+  alpha: 1.0
+  gamma: 2.0
+class_weights: "auto"
+
+# ==============================================================================
+# Evaluation & Metrics
+# ==============================================================================
+score_metric: "mcc"
+additional_metrics:
+  - "accuracy"
+  - "f1_macro"
+  - "precision"
+  - "recall"
+  - "confusion_matrix"
+  - "per_class_accuracy"
+compute_roc_curves: true
+
+# ==============================================================================
+# Checkpointing & Early Stopping
+# ==============================================================================
+save_every_n_epochs: 1
+keep_top_k_checkpoints: 3
+save_final_model: true
+resume_from_checkpoint: null
+early_stopping:
+  enabled: true
+  patience: 10
+  min_delta: 0.001
+  mode: "max"
+
+# ==============================================================================
+# Logging & Visualization
+# ==============================================================================
+log_level: "INFO"
+log_every_n_steps: 10
+tensorboard:
+  enabled: false
+wandb:
+  enabled: false
+save_predictions:
+  enabled: false
+
+# ==============================================================================
+# Model Export
+# ==============================================================================
+export_onnx: false
+export_torchscript: false
+quantization:
+  enabled: false
+  backend: "fbgemm"
+
+# ==============================================================================
+# Hardware
+# ==============================================================================
+device: "cuda"
+data_parallel: false
+distributed:
+  enabled: false
+  backend: "nccl"
+  world_size: 1
+  rank: 0

@@ -1,10 +1,14 @@
 """Plotting utilities for training visualization."""
 
+import csv
 import json
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+
+logger = logging.getLogger(__name__)
 
 
 def set_plot_style():
@@ -304,6 +308,9 @@ def generate_all_figures(
     figures_dir = output_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
     
+    metrics_dir = figures_dir / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    
     # Training curves (only if history is provided)
     if history and 'train_loss' in history and history['train_loss']:
         plot_training_curves(
@@ -321,14 +328,14 @@ def generate_all_figures(
         plot_confusion_matrix(
             metrics["confusion_matrix"],
             class_names,
-            str(figures_dir / f"{split_name}_confusion_matrix.png"),
+            str(metrics_dir / f"{split_name}_confusion_matrix.png"),
             normalize=True,
             title=f"{split_name.capitalize()} Confusion Matrix (Normalized)"
         )
         plot_confusion_matrix(
             metrics["confusion_matrix"],
             class_names,
-            str(figures_dir / f"{split_name}_confusion_matrix_counts.png"),
+            str(metrics_dir / f"{split_name}_confusion_matrix_counts.png"),
             normalize=False,
             title=f"{split_name.capitalize()} Confusion Matrix (Counts)"
         )
@@ -337,7 +344,7 @@ def generate_all_figures(
     if roc_curves:
         plot_roc_curves(
             roc_curves,
-            str(figures_dir / f"{split_name}_roc_curves.png"),
+            str(metrics_dir / f"{split_name}_roc_curves.png"),
             title=f"{split_name.capitalize()} ROC Curves"
         )
     
@@ -345,13 +352,220 @@ def generate_all_figures(
     if "per_class_accuracy" in metrics:
         plot_per_class_accuracy(
             metrics["per_class_accuracy"],
-            str(figures_dir / f"{split_name}_per_class_accuracy.png"),
+            str(metrics_dir / f"{split_name}_per_class_accuracy.png"),
             title=f"{split_name.capitalize()} Per-Class Accuracy"
         )
     
     # Metrics comparison
     plot_metrics_comparison(
         metrics,
-        str(figures_dir / f"{split_name}_metrics_summary.png"),
+        str(metrics_dir / f"{split_name}_metrics_summary.png"),
         title=f"{split_name.capitalize()} Metrics Summary"
     )
+
+
+def plot_stratification_histograms(
+    csv_path: str,
+    image_bin_path: str,
+    train_indices: List[int],
+    val_indices: List[int],
+    test_indices: List[int],
+    samples: list,
+    save_dir: Path,
+    stratify_columns: Optional[List[str]] = None,
+    stratify_bins: Optional[Dict[str, int]] = None,
+) -> None:
+    """Plot per-column histograms of stratification values across train/val/test.
+
+    For each stratification column, produces a figure with three side-by-side
+    subplots (train / val / test) showing the distribution of that column's
+    values within each split.  Continuous (numeric) columns use equal-width
+    histogram bins; categorical columns use a bar chart of category counts.
+
+    Figures are saved to *save_dir* (e.g. ``figures/stratification_bins/``).
+    """
+    set_plot_style()
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    bin_path = Path(image_bin_path).resolve()
+
+    # -- Build filename -> sample-index lookup (same logic as data.py) --
+    path_to_idx: Dict[Path, int] = {}
+    name_to_idx: Dict[str, int] = {}
+    for idx, (p, _) in enumerate(samples):
+        path_to_idx[p.resolve()] = idx
+        try:
+            rel = p.resolve().relative_to(bin_path)
+            path_to_idx[rel] = idx
+            path_to_idx[Path(str(rel).replace("\\", "/"))] = idx
+        except ValueError:
+            pass
+        name_to_idx[p.name] = idx
+
+    # -- Read CSV and collect per-index raw values --
+    with open(csv_path, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        available_cols = [c for c in reader.fieldnames if c != "filename"]
+        if stratify_columns:
+            cols = [c for c in stratify_columns if c in reader.fieldnames]
+        else:
+            cols = available_cols
+
+        if not cols:
+            return
+
+        # idx -> {col: raw_string}
+        idx_values: Dict[int, Dict[str, str]] = {}
+        for row in reader:
+            fname = row["filename"].strip()
+            # Resolve to sample index
+            sid = None
+            resolved = Path(fname).resolve() if not Path(fname).is_absolute() else Path(fname)
+            if resolved in path_to_idx:
+                sid = path_to_idx[resolved]
+            if sid is None:
+                rel = Path(fname.replace("\\", "/"))
+                if rel in path_to_idx:
+                    sid = path_to_idx[rel]
+            if sid is None:
+                joined = (bin_path / fname).resolve()
+                if joined in path_to_idx:
+                    sid = path_to_idx[joined]
+            if sid is None:
+                bare = Path(fname).name
+                if bare in name_to_idx:
+                    sid = name_to_idx[bare]
+            if sid is not None:
+                idx_values[sid] = {col: row[col].strip() for col in cols}
+
+    # -- Build index sets for fast membership testing --
+    train_set: Set[int] = set(train_indices)
+    val_set: Set[int] = set(val_indices)
+    test_set: Set[int] = set(test_indices)
+
+    bins_cfg = stratify_bins or {}
+
+    # -- Generate one figure per column --
+    for col in cols:
+        # Gather values per split
+        split_values: Dict[str, List] = {"Train": [], "Validation": [], "Test": []}
+        for sid, vals in idx_values.items():
+            raw = vals.get(col, "")
+            if not raw:
+                continue
+            if sid in train_set:
+                split_values["Train"].append(raw)
+            elif sid in val_set:
+                split_values["Validation"].append(raw)
+            elif sid in test_set:
+                split_values["Test"].append(raw)
+
+        is_numeric = col in bins_cfg
+        # If not explicitly listed as bins column, auto-detect numeric
+        if not is_numeric:
+            try:
+                for s_vals in split_values.values():
+                    for v in s_vals[:100]:
+                        float(v)
+                is_numeric = True
+            except (ValueError, IndexError):
+                is_numeric = False
+
+        if is_numeric:
+            _plot_numeric_histograms(col, split_values, bins_cfg.get(col, 20), save_dir)
+        else:
+            _plot_categorical_histograms(col, split_values, save_dir)
+
+    logger.info(f"Stratification histograms saved to: {save_dir}")
+
+
+def _plot_numeric_histograms(
+    col_name: str,
+    split_values: Dict[str, List[str]],
+    n_bins: int,
+    save_dir: Path,
+) -> None:
+    """Histogram subplots for a continuous column."""
+    set_plot_style()
+
+    # Parse all to float
+    parsed: Dict[str, List[float]] = {}
+    all_vals: List[float] = []
+    for split, raw_vals in split_values.items():
+        floats = []
+        for v in raw_vals:
+            try:
+                floats.append(float(v))
+            except ValueError:
+                pass
+        parsed[split] = floats
+        all_vals.extend(floats)
+
+    if not all_vals:
+        return
+
+    vmin, vmax = min(all_vals), max(all_vals)
+    bin_edges = np.linspace(vmin, vmax, n_bins + 1)
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
+    colors = {"Train": "#2196F3", "Validation": "#FF9800", "Test": "#4CAF50"}
+
+    for ax, (split, vals) in zip(axes, parsed.items()):
+        if vals:
+            ax.hist(vals, bins=bin_edges, color=colors[split], edgecolor="black",
+                    linewidth=0.5, alpha=0.85)
+        ax.set_title(f"{split} (n={len(vals)})", fontsize=13)
+        ax.set_xlabel(col_name.capitalize())
+        ax.set_ylabel("Count" if ax == axes[0] else "")
+        ax.grid(True, alpha=0.3)
+
+        # Annotate mean and std
+        if vals:
+            mu, sigma = np.mean(vals), np.std(vals)
+            ax.axvline(mu, color="red", linestyle="--", linewidth=1.5, label=f"Mean: {mu:.2f}")
+            ax.axvline(mu - sigma, color="red", linestyle=":", linewidth=1, alpha=0.6)
+            ax.axvline(mu + sigma, color="red", linestyle=":", linewidth=1, alpha=0.6,
+                        label=f"Std: {sigma:.2f}")
+            ax.legend(fontsize=9)
+
+    fig.suptitle(f"Distribution of '{col_name}' across splits", fontsize=15, y=1.02)
+    plt.tight_layout()
+    plt.savefig(str(save_dir / f"{col_name}_histogram.png"))
+    plt.close(fig)
+
+
+def _plot_categorical_histograms(
+    col_name: str,
+    split_values: Dict[str, List[str]],
+    save_dir: Path,
+) -> None:
+    """Bar-chart subplots for a categorical column."""
+    set_plot_style()
+
+    # Collect all unique categories
+    all_cats: set = set()
+    for vals in split_values.values():
+        all_cats.update(vals)
+    categories = sorted(all_cats)
+    x = np.arange(len(categories))
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
+    colors = {"Train": "#2196F3", "Validation": "#FF9800", "Test": "#4CAF50"}
+
+    for ax, (split, vals) in zip(axes, split_values.items()):
+        from collections import Counter
+        counts = Counter(vals)
+        heights = [counts.get(c, 0) for c in categories]
+        ax.bar(x, heights, color=colors[split], edgecolor="black", linewidth=0.5, alpha=0.85)
+        ax.set_xticks(x)
+        ax.set_xticklabels(categories, rotation=45, ha="right", fontsize=8)
+        ax.set_title(f"{split} (n={len(vals)})", fontsize=13)
+        ax.set_xlabel(col_name.capitalize())
+        ax.set_ylabel("Count" if ax == axes[0] else "")
+        ax.grid(True, alpha=0.3)
+
+    fig.suptitle(f"Distribution of '{col_name}' across splits", fontsize=15, y=1.02)
+    plt.tight_layout()
+    plt.savefig(str(save_dir / f"{col_name}_histogram.png"))
+    plt.close(fig)

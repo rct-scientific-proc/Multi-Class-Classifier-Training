@@ -58,6 +58,14 @@ class Config:
     test_directory: str = "data/mnist/test"
     output_directory: str = "results"
     
+    # Image bin splitting
+    image_bin_path: Optional[str] = None
+    train_val_split: float = 0.6
+    test_split: float = 0.2
+    stratification_csv: Optional[str] = None
+    stratify_columns: List[str] = field(default_factory=list)
+    stratify_bins: Dict[str, int] = field(default_factory=dict)
+    
     # Data loading
     num_workers: int = 4
     pin_memory: bool = True

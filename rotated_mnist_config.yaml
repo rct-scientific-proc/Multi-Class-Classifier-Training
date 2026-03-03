@@ -36,6 +36,10 @@ stratify_columns: ["angle", "flipped"]
 stratify_bins:
   angle: 10
   flipped: 2
+stratify_distribution:
+  angle: "uniform"      # Uniform, ensure each split has a uniform distribution of angle bins. This is important for validating and testing on a range of angles, not just the most common ones.
+  flipped: "distinct"   # Distinct, do not allow the train and val/test splits to have similar flipped distributions, so val/test is validating and testing on different distributions.
+
 
 # ==============================================================================
 # Data Loading & Augmentation

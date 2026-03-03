@@ -254,6 +254,257 @@ def _split_indices_random(
     return train_indices, val_indices, test_indices
 
 
+def _partition_by_distinct(
+    all_indices: List[int],
+    samples: List[Tuple[Path, int]],
+    per_column_labels: Dict[int, Dict[str, str]],
+    distinct_cols: List[str],
+    train_ratio: float,
+    rng: np.random.RandomState,
+) -> Tuple[List[int], List[int]]:
+    """Partition indices into train-pool and eval-pool based on distinct columns.
+
+    For each distinct column, unique values are split into 'train values' and
+    'eval values'.  A sample goes to the eval pool if ANY of its distinct column
+    values is assigned as an eval value.
+
+    Args:
+        all_indices: All sample indices to partition.
+        samples: Full samples list (for class labels).
+        per_column_labels: sample_idx -> {col: bin_label}.
+        distinct_cols: Column names with "distinct" distribution.
+        train_ratio: Desired training fraction (used to allocate values).
+        rng: Random state.
+
+    Returns:
+        (train_pool, eval_pool) index lists.
+    """
+    eval_value_sets: Dict[str, set] = {}
+
+    for col in distinct_cols:
+        # Collect all unique values for this column
+        unique_vals = sorted(set(
+            per_column_labels[idx][col]
+            for idx in all_indices
+            if idx in per_column_labels and col in per_column_labels[idx]
+        ))
+
+        if len(unique_vals) <= 1:
+            logger.warning(
+                f"Distinct column '{col}' has {len(unique_vals)} unique value(s); "
+                f"cannot create distinct distributions. Skipping."
+            )
+            continue
+
+        # Assign first N values to train, rest to eval
+        n_train_vals = max(1, int(round(len(unique_vals) * train_ratio)))
+        n_train_vals = min(n_train_vals, len(unique_vals) - 1)  # at least 1 eval value
+        train_vals = set(unique_vals[:n_train_vals])
+        eval_vals = set(unique_vals[n_train_vals:])
+        eval_value_sets[col] = eval_vals
+
+        logger.info(
+            f"Distinct column '{col}': "
+            f"train values ({len(train_vals)}) = {sorted(train_vals)}, "
+            f"eval values ({len(eval_vals)}) = {sorted(eval_vals)}"
+        )
+
+    if not eval_value_sets:
+        return list(all_indices), []
+
+    train_pool: List[int] = []
+    eval_pool: List[int] = []
+
+    for idx in all_indices:
+        is_eval = False
+        if idx in per_column_labels:
+            for col, eval_vals in eval_value_sets.items():
+                if col in per_column_labels[idx]:
+                    if per_column_labels[idx][col] in eval_vals:
+                        is_eval = True
+                        break
+        if is_eval:
+            eval_pool.append(idx)
+        else:
+            train_pool.append(idx)
+
+    return train_pool, eval_pool
+
+
+def _uniform_downsample(
+    indices: List[int],
+    per_column_labels: Dict[int, Dict[str, str]],
+    uniform_cols: List[str],
+    rng: np.random.RandomState,
+) -> List[int]:
+    """Downsample indices so each bin of each uniform column has equal count.
+
+    For each uniform column, groups indices by bin label and subsamples every
+    bin down to the count of the smallest bin.  Samples without a label for a
+    column are kept unchanged.
+    """
+    result = list(indices)
+
+    for col in uniform_cols:
+        bin_to_indices: Dict[str, List[int]] = {}
+        no_label: List[int] = []
+
+        for idx in result:
+            if idx in per_column_labels and col in per_column_labels[idx]:
+                bin_label = per_column_labels[idx][col]
+                bin_to_indices.setdefault(bin_label, []).append(idx)
+            else:
+                no_label.append(idx)
+
+        if not bin_to_indices:
+            continue
+
+        min_count = min(len(v) for v in bin_to_indices.values())
+
+        if min_count == 0:
+            logger.warning(
+                f"Uniform column '{col}': at least one bin has 0 samples; "
+                f"skipping uniform downsampling for this split."
+            )
+            continue
+
+        new_result: List[int] = []
+        for bin_label in sorted(bin_to_indices):
+            bin_indices = bin_to_indices[bin_label]
+            if len(bin_indices) > min_count:
+                rng.shuffle(bin_indices)
+                bin_indices = bin_indices[:min_count]
+            new_result.extend(bin_indices)
+
+        new_result.extend(no_label)
+        result = new_result
+
+        logger.info(
+            f"Uniform downsample '{col}': {min_count} samples/bin, "
+            f"{len(result)} total"
+        )
+
+    return result
+
+
+def _split_indices_with_distribution(
+    samples: List[Tuple[Path, int]],
+    stratify_groups: Dict[int, str],
+    per_column_labels: Dict[int, Dict[str, str]],
+    stratify_columns: List[str],
+    stratify_distribution: Dict[str, str],
+    train_ratio: float,
+    test_ratio: float,
+    seed: int = 42,
+) -> Tuple[List[int], List[int], List[int]]:
+    """Split sample indices with distribution constraints.
+
+    Supports three distribution modes per column:
+      - "proportional" (default): each split mirrors the original distribution.
+      - "distinct": entire column values are assigned exclusively to either
+        the train pool or the eval (val+test) pool.  This tests whether the
+        model generalises to unseen feature values.
+      - "uniform": after splitting, each split is downsampled so every bin
+        of the column has equal representation.
+
+    Processing order:
+      1. Partition by "distinct" columns (train pool / eval pool).
+      2. Stratified split within each pool using the remaining columns.
+      3. Apply "uniform" downsampling on the final splits.
+    """
+    rng = np.random.RandomState(seed)
+
+    distinct_cols = [
+        c for c in stratify_columns
+        if stratify_distribution.get(c, "proportional") == "distinct"
+    ]
+    uniform_cols = [
+        c for c in stratify_columns
+        if stratify_distribution.get(c, "proportional") == "uniform"
+    ]
+
+    all_indices = list(range(len(samples)))
+
+    # ------------------------------------------------------------------
+    # Step 1: handle "distinct" columns
+    # ------------------------------------------------------------------
+    if distinct_cols:
+        train_pool, eval_pool = _partition_by_distinct(
+            all_indices, samples, per_column_labels,
+            distinct_cols, train_ratio, rng,
+        )
+
+        logger.info(
+            f"Distinct partitioning: train pool = {len(train_pool)}, "
+            f"eval pool = {len(eval_pool)}"
+        )
+
+        if not eval_pool or not train_pool:
+            logger.warning(
+                "Distinct partitioning produced an empty pool; "
+                "falling back to proportional stratified split."
+            )
+            train_indices, val_indices, test_indices = _split_indices_stratified(
+                samples, stratify_groups, train_ratio, test_ratio, seed,
+            )
+        else:
+            # All of train_pool → train
+            train_indices = list(train_pool)
+
+            # Split eval_pool into val / test, stratified by class and the
+            # non-distinct stratification columns.
+            val_ratio = 1.0 - train_ratio - test_ratio
+            eval_val_frac = (
+                val_ratio / (val_ratio + test_ratio)
+                if (val_ratio + test_ratio) > 0 else 0.5
+            )
+
+            # Build per-sample group keys from non-distinct columns only
+            non_distinct_cols = [c for c in stratify_columns if c not in distinct_cols]
+            eval_grouped: Dict[Tuple[int, str], List[int]] = {}
+            for idx in eval_pool:
+                class_idx = samples[idx][1]
+                parts = []
+                if idx in per_column_labels:
+                    for col in non_distinct_cols:
+                        if col in per_column_labels[idx]:
+                            parts.append(f"{col}={per_column_labels[idx][col]}")
+                group = "|".join(parts) if parts else ""
+                eval_grouped.setdefault((class_idx, group), []).append(idx)
+
+            val_indices: List[int] = []
+            test_indices: List[int] = []
+
+            for key, indices in eval_grouped.items():
+                rng.shuffle(indices)
+                n_val = max(1, int(round(len(indices) * eval_val_frac)))
+                if n_val >= len(indices):
+                    n_val = len(indices) - 1 if len(indices) > 1 else len(indices)
+                val_indices.extend(indices[:n_val])
+                test_indices.extend(indices[n_val:])
+    else:
+        # No distinct columns → normal stratified split
+        train_indices, val_indices, test_indices = _split_indices_stratified(
+            samples, stratify_groups, train_ratio, test_ratio, seed,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 2: handle "uniform" columns — downsample each split
+    # ------------------------------------------------------------------
+    if uniform_cols:
+        train_indices = _uniform_downsample(
+            train_indices, per_column_labels, uniform_cols, rng,
+        )
+        val_indices = _uniform_downsample(
+            val_indices, per_column_labels, uniform_cols, rng,
+        )
+        test_indices = _uniform_downsample(
+            test_indices, per_column_labels, uniform_cols, rng,
+        )
+
+    return train_indices, val_indices, test_indices
+
+
 def _value_to_bin(value: float, bin_edges: List[float]) -> str:
     """Map a continuous value to a bin label given a list of edges."""
     for i in range(len(bin_edges) - 1):
@@ -272,7 +523,7 @@ def _load_stratification_csv(
     samples: List[Tuple[Path, int]],
     stratify_columns: Optional[List[str]] = None,
     stratify_bins: Optional[Dict[str, int]] = None,
-) -> Dict[int, str]:
+) -> Tuple[Dict[int, str], Dict[int, Dict[str, str]]]:
     """Load a stratification CSV and map sample indices to stratify groups.
     
     The CSV must have a "filename" column whose values are paths relative to
@@ -292,6 +543,11 @@ def _load_stratification_csv(
     When multiple stratification columns are present the group key is the
     pipe-separated concatenation of their values
     (e.g. ``"angle=bin2|quality=high"``).
+    
+    Returns:
+        A tuple of (stratify_groups, per_column_labels):
+        - stratify_groups: mapping sample_index -> composite group string
+        - per_column_labels: mapping sample_index -> {column_name: bin_label}
     """
     bin_path = Path(image_bin_path).resolve()
     
@@ -386,9 +642,11 @@ def _load_stratification_csv(
         
         # --- Second pass: assign group keys ---
         matched = 0
+        per_column_labels: Dict[int, Dict[str, str]] = {}
         for fname, vals in raw_rows:
             # Build composite group key from all stratify columns
             parts = []
+            col_labels: Dict[str, str] = {}
             all_empty = True
             for col in strat_cols:
                 raw_val = vals[col]
@@ -402,11 +660,14 @@ def _load_stratification_csv(
                         fval = float(raw_val)
                         edges = col_bin_edges[col]
                         bin_label = _value_to_bin(fval, edges)
+                        col_labels[col] = bin_label
                         parts.append(f"{col}={bin_label}" if len(strat_cols) > 1 else bin_label)
                     except ValueError:
+                        col_labels[col] = raw_val
                         parts.append(f"{col}={raw_val}" if len(strat_cols) > 1 else raw_val)
                 else:
                     # Categorical column -> use as-is
+                    col_labels[col] = raw_val
                     parts.append(f"{col}={raw_val}" if len(strat_cols) > 1 else raw_val)
             group = "" if all_empty else "|".join(parts)
             
@@ -434,6 +695,7 @@ def _load_stratification_csv(
             
             if idx is not None:
                 stratify_groups[idx] = group
+                per_column_labels[idx] = col_labels
                 matched += 1
 
         logger.info(
@@ -441,7 +703,7 @@ def _load_stratification_csv(
             f"{len(samples) - matched} will be randomly distributed."
         )
 
-    return stratify_groups
+    return stratify_groups, per_column_labels
 
 
 def create_data_loaders(
@@ -467,20 +729,35 @@ def create_data_loaders(
         
         if config.stratification_csv is not None:
             logger.info(f"Stratified splitting using: {config.stratification_csv}")
-            stratify_groups = _load_stratification_csv(
+            stratify_groups, per_column_labels = _load_stratification_csv(
                 config.stratification_csv,
                 config.image_bin_path,
                 full_dataset.samples,
                 stratify_columns=config.stratify_columns or None,
                 stratify_bins=config.stratify_bins or None,
             )
-            train_idx, val_idx, test_idx = _split_indices_stratified(
-                full_dataset.samples,
-                stratify_groups,
-                config.train_val_split,
-                config.test_split,
-                seed=getattr(config, "seed", 42),
-            )
+            
+            dist = getattr(config, "stratify_distribution", None) or {}
+            if dist:
+                logger.info(f"Distribution constraints: {dist}")
+                train_idx, val_idx, test_idx = _split_indices_with_distribution(
+                    full_dataset.samples,
+                    stratify_groups,
+                    per_column_labels,
+                    config.stratify_columns or [],
+                    dist,
+                    config.train_val_split,
+                    config.test_split,
+                    seed=getattr(config, "seed", 42),
+                )
+            else:
+                train_idx, val_idx, test_idx = _split_indices_stratified(
+                    full_dataset.samples,
+                    stratify_groups,
+                    config.train_val_split,
+                    config.test_split,
+                    seed=getattr(config, "seed", 42),
+                )
         else:
             logger.info("Random splitting (no stratification CSV).")
             train_idx, val_idx, test_idx = _split_indices_random(

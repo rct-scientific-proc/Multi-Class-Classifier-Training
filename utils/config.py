@@ -65,6 +65,7 @@ class Config:
     stratification_csv: Optional[str] = None
     stratify_columns: List[str] = field(default_factory=list)
     stratify_bins: Dict[str, int] = field(default_factory=dict)
+    stratify_distribution: Dict[str, str] = field(default_factory=dict)
     
     # Data loading
     num_workers: int = 4

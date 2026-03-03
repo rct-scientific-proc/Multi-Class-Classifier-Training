@@ -259,6 +259,7 @@ def _partition_by_distinct(
     samples: List[Tuple[Path, int]],
     per_column_labels: Dict[int, Dict[str, str]],
     distinct_cols: List[str],
+    randomize_order: Dict[str, bool],
     train_ratio: float,
     rng: np.random.RandomState,
 ) -> Tuple[List[int], List[int]]:
@@ -268,11 +269,16 @@ def _partition_by_distinct(
     'eval values'.  A sample goes to the eval pool if ANY of its distinct column
     values is assigned as an eval value.
 
+    When *randomize_order[col]* is False ("distinct"), unique values are sorted
+    lexicographically before partitioning — the first N go to train, the rest to
+    eval.  When True ("distinct_random"), values are shuffled randomly first.
+
     Args:
         all_indices: All sample indices to partition.
         samples: Full samples list (for class labels).
         per_column_labels: sample_idx -> {col: bin_label}.
-        distinct_cols: Column names with "distinct" distribution.
+        distinct_cols: Column names with "distinct" or "distinct_random" distribution.
+        randomize_order: col -> True to shuffle values before splitting.
         train_ratio: Desired training fraction (used to allocate values).
         rng: Random state.
 
@@ -295,6 +301,11 @@ def _partition_by_distinct(
                 f"cannot create distinct distributions. Skipping."
             )
             continue
+
+        # Optionally shuffle before partitioning
+        if randomize_order.get(col, False):
+            rng.shuffle(unique_vals)
+            logger.info(f"Distinct column '{col}': shuffled bin order (distinct_random)")
 
         # Assign first N values to train, rest to eval
         n_train_vals = max(1, int(round(len(unique_vals) * train_ratio)))
@@ -399,16 +410,20 @@ def _split_indices_with_distribution(
 ) -> Tuple[List[int], List[int], List[int]]:
     """Split sample indices with distribution constraints.
 
-    Supports three distribution modes per column:
+    Supports four distribution modes per column:
       - "proportional" (default): each split mirrors the original distribution.
-      - "distinct": entire column values are assigned exclusively to either
-        the train pool or the eval (val+test) pool.  This tests whether the
-        model generalises to unseen feature values.
+      - "distinct": bin values are sorted, then the first N are assigned
+        exclusively to train and the rest to eval (val+test).  Useful when
+        bins have a natural order (e.g. angle ranges) and you want train
+        to cover one contiguous region and eval another.
+      - "distinct_random": like "distinct", but bin values are randomly
+        shuffled before partitioning.  Useful when you want non-overlapping
+        bins but don't care which specific bins go to train vs eval.
       - "uniform": after splitting, each split is downsampled so every bin
         of the column has equal representation.
 
     Processing order:
-      1. Partition by "distinct" columns (train pool / eval pool).
+      1. Partition by "distinct"/"distinct_random" columns (train pool / eval pool).
       2. Stratified split within each pool using the remaining columns.
       3. Apply "uniform" downsampling on the final splits.
     """
@@ -416,8 +431,13 @@ def _split_indices_with_distribution(
 
     distinct_cols = [
         c for c in stratify_columns
-        if stratify_distribution.get(c, "proportional") == "distinct"
+        if stratify_distribution.get(c, "proportional") in ("distinct", "distinct_random")
     ]
+    # Track which distinct columns should randomize their bin order
+    randomize_order = {
+        c: stratify_distribution.get(c, "proportional") == "distinct_random"
+        for c in distinct_cols
+    }
     uniform_cols = [
         c for c in stratify_columns
         if stratify_distribution.get(c, "proportional") == "uniform"
@@ -426,12 +446,12 @@ def _split_indices_with_distribution(
     all_indices = list(range(len(samples)))
 
     # ------------------------------------------------------------------
-    # Step 1: handle "distinct" columns
+    # Step 1: handle "distinct" / "distinct_random" columns
     # ------------------------------------------------------------------
     if distinct_cols:
         train_pool, eval_pool = _partition_by_distinct(
             all_indices, samples, per_column_labels,
-            distinct_cols, train_ratio, rng,
+            distinct_cols, randomize_order, train_ratio, rng,
         )
 
         logger.info(

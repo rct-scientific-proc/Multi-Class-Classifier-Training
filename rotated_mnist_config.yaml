@@ -36,9 +36,20 @@ stratify_columns: ["angle", "flipped"]
 stratify_bins:
   angle: 10
   flipped: 2
+# Controls how each stratification column's values are distributed across splits.
+# Options per column:
+#   "proportional" - (default) each split mirrors the original distribution.
+#   "distinct"     - bins are sorted, then the first N go to train and the
+#                    rest to eval. Produces a deterministic, ordered partition
+#                    (e.g. train on low angles, eval on high angles).
+#   "distinct_random" - like distinct, but bins are randomly shuffled before
+#                    partitioning. The seed controls reproducibility. Use when
+#                    you want non-overlapping bins but no ordered bias.
+#   "uniform"      - after splitting, downsample every bin to the smallest
+#                    bin's count so each bin is equally represented.
 stratify_distribution:
-  angle: "uniform"      # Uniform, ensure each split has a uniform distribution of angle bins. This is important for validating and testing on a range of angles, not just the most common ones.
-  flipped: "distinct"   # Distinct, do not allow the train and val/test splits to have similar flipped distributions, so val/test is validating and testing on different distributions.
+  angle: "distinct_random"        # Train on some angle bins, evaluate on entirely different ones
+  flipped: "uniform"       # Equal representation of flipped/not-flipped in each split
 
 
 # ==============================================================================
@@ -71,21 +82,21 @@ augmentation:
   # - scale: [min_scale, max_scale] zoom range (e.g. [0.9, 1.1] for ±10%)
   # - shear: max shear angle in degrees
   affine:
-    enabled: false
-    # translate: [0.1, 0.1]
-    # scale: [0.9, 1.1]
-    # shear: 10
+    enabled: true
+    translate: [0.1, 0.1]
+    scale: [0.9, 1.1]
+    shear: 10
 
   # Randomly adjust brightness, contrast, saturation, and hue.
   # Only applies to RGB images (num_channels: 3); ignored for grayscale.
   # Each value is the max random shift: brightness/contrast/saturation are
   # multiplicative factors (e.g. 0.2 = ±20%), hue is absolute (max 0.5).
   color_jitter:
-    enabled: false
-    # brightness: 0.2
-    # contrast: 0.2
-    # saturation: 0.2
-    # hue: 0.1
+    enabled: true
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.2
+    hue: 0.1
 
   # Randomly erases a rectangular patch of the image (after normalization).
   # Helps prevent overfitting by forcing the model to use broader context.
@@ -93,25 +104,25 @@ augmentation:
   # - scale: [min, max] fraction of image area to erase (e.g. [0.02, 0.33])
   # - ratio: [min, max] aspect ratio of the erased rectangle
   random_erasing:
-    enabled: false
-    # probability: 0.5
-    # scale: [0.02, 0.33]
-    # ratio: [0.3, 3.3]
+    enabled: true
+    probability: 0.5
+    scale: [0.02, 0.33]
+    ratio: [0.3, 3.3]
 
   # Mixup: blends pairs of training images and their labels using a random
   # weight drawn from a Beta(alpha, alpha) distribution. Encourages smoother
   # decision boundaries. alpha controls the blend strength — lower values
   # (e.g. 0.2) keep images mostly intact, higher values blend more aggressively.
   mixup:
-    enabled: false
-    # alpha: 0.2
+    enabled: true
+    alpha: 0.2
 
   # CutMix: replaces a random rectangular region of one image with a patch
   # from another, and mixes labels proportionally to the patch area.
   # alpha controls the Beta distribution for the cut ratio — 1.0 is standard.
   cutmix:
-    enabled: false
-    # alpha: 1.0
+    enabled: true
+    alpha: 1.0
 
 # ==============================================================================
 # Training Parameters

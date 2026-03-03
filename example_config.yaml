@@ -38,6 +38,32 @@ test_directory: "data/mnist/test"
 # Path to save all results of training and model checkpoints
 output_directory: "results/mnist_resnet18"
 
+# Path to large bin containing all images to use for training. Should still contain subdirectories for each class. (optional)
+# If this is not NULL, we will disregard the train/val/test directories and instead split the data from this bin according to the "train_val_split" and "test_split" ratios below.
+# This splitting is random by default, but if "stratification_csv" is provided, the splitting will be stratified based on the "stratify_col" values in the CSV file.
+image_bin_path: null
+
+# Split ratio for training/validation/test if using image bin (e.g., 0.8 for 80% train, 0.2 for validation, 0.1 for test)
+train_val_split: 0.6
+test_split: 0.2
+
+# Optional stratification csv file for splitting data based on some metadata columns
+# This option is only used if image_bin_path is provided. If stratification_csv is provided, the data will be split based on the stratification column values in the CSV file instead of random splitting.
+# CSV file must have a "filename" column (matching image filenames in image_bin_path) plus one or more columns to stratify on.
+# If an image is listed in the CSV file but not found in the image bin, it will be ignored. If an image is found in the image bin but not listed in the CSV file, it will be included in the split but not guaranteed to be stratified.
+# If an image in the csv does not have a value for a stratify column, it should contain an empty value (e.g., ""), and it will be included in the split but not guaranteed to be stratified, it will be randomized across the splits.
+stratification_csv: null
+
+# Which columns in the CSV to use for stratification (e.g., ["angle"], ["angle", "quality"])
+# If empty or omitted, ALL non-filename columns in the CSV are used.
+stratify_columns: []
+
+# Number of equal-width bins for continuous (numeric) stratification columns.
+# Map column name -> number of bins.  Columns not listed here are treated as
+# categorical (their CSV values are used directly as group labels).
+# Example: {angle: 10}  will auto-bin the "angle" column into 10 equal-width bins.
+stratify_bins: {}
+
 # ==============================================================================
 # Data Loading & Augmentation
 # ==============================================================================

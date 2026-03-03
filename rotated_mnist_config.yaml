@@ -52,19 +52,66 @@ normalize_mean: [0.485, 0.456, 0.406]
 normalize_std: [0.229, 0.224, 0.225]
 
 augmentation:
+  # Probability of flipping each image horizontally (left-right mirror).
+  # Range: 0.0 (never) to 1.0 (always). Useful for natural images without
+  # inherent horizontal directionality (e.g. landscapes, objects).
   horizontal_flip: 0.0
+
+  # Probability of flipping each image vertically (top-bottom mirror).
+  # Range: 0.0 to 1.0. Less commonly used; helpful for satellite/aerial imagery.
   vertical_flip: 0.0
+
+  # Maximum random rotation in degrees (applied as ±rotation).
+  # Set to 0 to disable. Example: 15 means each image is randomly rotated
+  # between -15° and +15°.
   rotation: 0        # no extra rotation — the data already has rotation
+
+  # Random affine transformation combining translation, scaling, and shearing.
+  # - translate: [max_horizontal, max_vertical] as fractions of image size (e.g. 0.1 = 10%)
+  # - scale: [min_scale, max_scale] zoom range (e.g. [0.9, 1.1] for ±10%)
+  # - shear: max shear angle in degrees
   affine:
     enabled: false
+    # translate: [0.1, 0.1]
+    # scale: [0.9, 1.1]
+    # shear: 10
+
+  # Randomly adjust brightness, contrast, saturation, and hue.
+  # Only applies to RGB images (num_channels: 3); ignored for grayscale.
+  # Each value is the max random shift: brightness/contrast/saturation are
+  # multiplicative factors (e.g. 0.2 = ±20%), hue is absolute (max 0.5).
   color_jitter:
     enabled: false
+    # brightness: 0.2
+    # contrast: 0.2
+    # saturation: 0.2
+    # hue: 0.1
+
+  # Randomly erases a rectangular patch of the image (after normalization).
+  # Helps prevent overfitting by forcing the model to use broader context.
+  # - probability: chance of applying per image (0.0 to 1.0)
+  # - scale: [min, max] fraction of image area to erase (e.g. [0.02, 0.33])
+  # - ratio: [min, max] aspect ratio of the erased rectangle
   random_erasing:
     enabled: false
+    # probability: 0.5
+    # scale: [0.02, 0.33]
+    # ratio: [0.3, 3.3]
+
+  # Mixup: blends pairs of training images and their labels using a random
+  # weight drawn from a Beta(alpha, alpha) distribution. Encourages smoother
+  # decision boundaries. alpha controls the blend strength — lower values
+  # (e.g. 0.2) keep images mostly intact, higher values blend more aggressively.
   mixup:
     enabled: false
+    # alpha: 0.2
+
+  # CutMix: replaces a random rectangular region of one image with a patch
+  # from another, and mixes labels proportionally to the patch area.
+  # alpha controls the Beta distribution for the cut ratio — 1.0 is standard.
   cutmix:
     enabled: false
+    # alpha: 1.0
 
 # ==============================================================================
 # Training Parameters
